@@ -173,6 +173,7 @@ class HomeController extends BaseController
             file_put_contents($envPath, $envTemp);
             // 导入sql
             DB::unprepared(file_get_contents($installSql));
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
             // 写入安装锁
             file_put_contents($installLock, 'install ok');
             return 'success';

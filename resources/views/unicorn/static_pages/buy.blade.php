@@ -66,7 +66,7 @@
                                                         <label for="shop-number"
                                                                class="col-form-label">{{ __('dujiaoka.by_amount') }}:</label>
                                                         <input type="number" class="form-control form-control-sm"
-                                                               id="shop-number" name="by_amount" placeholder="" min="1" value="1">
+                                                               id="shop-number" name="by_amount" placeholder="" min="1" max="{{ !empty($procurement_enabled) ? 1 : 999 }}" value="1">
                                                     </div>
                                                     @if(isset($open_coupon))
                                                         <div class="col-xs-12 col-md-6">
@@ -193,7 +193,7 @@
             @endif
             $("input[type='number']").inputSpinner();
             $('#submit').click(function(){
-                if($("input[name='by_amount']").val() > {{ $in_stock }}){
+                if(!{{ !empty($allow_backorder) ? 'true' : 'false' }} && $("input[name='by_amount']").val() > {{ $in_stock }}){
                     {{-- 数量不允许大于库存 --}}
                     $(".modal-body").html("{{ __('dujiaoka.prompt.inventory_shortage') }}")
                     myModal.show()

@@ -7,6 +7,20 @@
         .layui-table td, .layui-table th {
             padding: 9px 5px;
         }
+        .info-ui .order-created {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            column-gap: 6px;
+        }
+        .info-ui .order-created strong {
+            width: auto;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+        .info-ui .order-created time {
+            white-space: nowrap;
+        }
     </style>
     <div class="main">
         <div class="layui-row">
@@ -25,6 +39,7 @@
                         {{ __('order.fields.order_detail') }}
                     </div>
                     @foreach($orders as $order)
+    @include('shared.procurement-status', ['order' => $order])
                         <div class="layui-card-body info-box">
                             <div class="layui-row order-list">
 
@@ -40,8 +55,10 @@
                                         </li>
                                         <li><strong>{{ __('order.fields.buy_amount') }}
                                                 :</strong> {{ $order['buy_amount'] }}</li>
-                                        <li><strong>{{ __('order.fields.order_created') }}
-                                                :</strong> {{ $order['created_at'] }}
+                                        <li class="order-created">
+                                            <strong>{{ __('order.fields.order_created') }}:</strong>
+                                            <time datetime="{{ str_replace(' ', 'T', (string) $order['created_at']) }}">{{ $order['created_at'] }}</time>
+                                        </li>
                                         <li><strong>{{ __('order.fields.email') }}:</strong> {{ $order['email'] }}</li>
                                     </ul>
                                 </div>
@@ -84,22 +101,22 @@
                                                 @break
                                                 @case(\App\Models\Order::STATUS_PROCESSING)
                                                 <span class="small-tips tips-green">
-                                                    {{ __('order.fields.status_processing') }}
+                                                    {{ !empty($order['procurement_enabled']) ? '正在出卡' : __('order.fields.status_processing') }}
                                                 </span>
                                                 @break
                                                 @case(\App\Models\Order::STATUS_COMPLETED)
                                                 <span class="small-tips tips-green">
-                                                    {{ __('order.fields.status_completed') }}
+                                                    {{ !empty($order['procurement_enabled']) ? '已出卡' : __('order.fields.status_completed') }}
                                                 </span>
                                                 @break
                                                 @case(\App\Models\Order::STATUS_FAILURE)
                                                 <span class="small-tips tips-black">
-                                                    {{ __('order.fields.status_failure') }}
+                                                    {{ !empty($order['procurement_enabled']) ? '出卡异常' : __('order.fields.status_failure') }}
                                                 </span>
                                                 @break
                                                 @case(\App\Models\Order::STATUS_ABNORMAL)
                                                 <span class="small-tips tips-black">
-                                                    {{ __('order.fields.status_abnormal') }}
+                                                    {{ !empty($order['procurement_enabled']) ? '出卡异常' : __('order.fields.status_abnormal') }}
                                                 </span>
                                                 @break
                                             @endswitch
@@ -108,12 +125,13 @@
                                                 :</strong> {{ $order['pay']['pay_name'] ?? ''  }}</li>
                                     </ul>
                                 </div>
+                                @if(empty($order['procurement_enabled']) || $order['status'] == \App\Models\Order::STATUS_COMPLETED)
                                 @php $info =''; @endphp
                                 @if($order['info'])
                                     @php
                                         $info = $order['info'];
                                         preg_match_all('/(\[.*?\])/m', $info, $matches, PREG_SET_ORDER, 0);
-                                        foreach ($matches as $item) {
+                                        foreach (empty($order['procurement_enabled']) ? $matches : [] as $item) {
                                             $str = $item[1] ?? '';
                                             if($str){
                                                 $info = str_replace($str,'',$info);
@@ -132,6 +150,7 @@
                                         </button>
                                     </div>
                                 </div>
+                                @endif
                             </div>
                         </div>
                     @endforeach
@@ -229,6 +248,7 @@
 @endsection
 
 @section('js')
+@include('shared.procurement-poll')
     <script src="/assets/style/js/clipboard/clipboard.min.js"></script>
     <script>
 

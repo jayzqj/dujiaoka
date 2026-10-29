@@ -3,9 +3,9 @@
 namespace App\Rules;
 
 use App\Models\BaseModel;
-use Illuminate\Contracts\Validation\Rule;
+use Illuminate\Contracts\Validation\ImplicitRule;
 
-class SearchPwd implements Rule
+class SearchPwd implements ImplicitRule
 {
     /**
      * Create a new rule instance.
@@ -26,7 +26,8 @@ class SearchPwd implements Rule
      */
     public function passes($attribute, $value)
     {
-        if (dujiaoka_config_get('is_open_search_pwd') == BaseModel::STATUS_OPEN && empty($value)) {
+        if (dujiaoka_config_get('is_open_search_pwd') == BaseModel::STATUS_OPEN
+            && (!is_string($value) || trim($value) === '')) {
             return false;
         }
         return true;

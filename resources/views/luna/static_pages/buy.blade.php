@@ -331,7 +331,7 @@
         {!! $buy_prompt !!}
     </div>
     </body>
-    <script>let stock = {{ $in_stock }}, limitNum = {{$buy_limit_num}};</script>
+    <script>let stock = {{ !empty($allow_backorder) ? 1 : $in_stock }}, limitNum = {{$buy_limit_num}};</script>
 @endsection
 @section('js')
     <script src="https://cdn.bootcss.com/jquery/2.1.0/jquery.min.js"></script>

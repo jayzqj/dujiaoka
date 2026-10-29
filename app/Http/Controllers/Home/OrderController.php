@@ -152,9 +152,15 @@ class OrderController extends BaseController
         if ($order->status == Order::STATUS_WAIT_PAY) {
             return response()->json(['msg' => 'wait....', 'code' => 400000]);
         }
-        // 成功
+        // Payment and delivery are different results. QR pages still redirect after payment.
         if ($order->status > Order::STATUS_WAIT_PAY) {
-            return response()->json(['msg' => 'success', 'code' => 200]);
+            $complete = (int) $order->status === Order::STATUS_COMPLETED;
+            $failed = in_array((int) $order->status, [Order::STATUS_FAILURE, Order::STATUS_ABNORMAL], true);
+            return response()->json([
+                'msg' => $complete ? 'success' : ($failed ? 'delivery_failed' : 'paid_processing'),
+                'code' => 200, 'paid' => true, 'status' => (int) $order->status,
+                'delivery' => $complete ? 'completed' : ($failed ? 'failed' : 'processing'),
+            ]);
         }
     }
 
@@ -206,10 +212,10 @@ class OrderController extends BaseController
     public function searchOrderByEmail(Request $request)
     {
         if (
-            !$request->has('email') ||
+            !$request->filled('email') ||
             (
                 dujiaoka_config_get('is_open_search_pwd', \App\Models\BaseModel::STATUS_CLOSE) == \App\Models\BaseModel::STATUS_OPEN &&
-                !$request->has('search_pwd')
+                !$request->filled('search_pwd')
             )
         ) {
             return $this->err(__('dujiaoka.prompt.server_illegal_request'));

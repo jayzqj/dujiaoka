@@ -11,6 +11,34 @@ class Order extends BaseModel
     use SoftDeletes;
 
     protected $table = 'orders';
+    protected $with = ['procurementOrder'];
+    protected $appends = ['procurement_enabled', 'paid_at'];
+    protected $hidden = ['procurementOrder', 'procurement_config'];
+
+    public function procurementOrder()
+    {
+        return $this->hasOne(ProcurementOrder::class);
+    }
+
+    public function getProcurementEnabledAttribute(): bool
+    {
+        return (bool) ($this->procurementOrder->procurement_enabled ?? false);
+    }
+
+    public function getProcurementConfigAttribute(): ?array
+    {
+        return $this->procurementOrder->procurement_config ?? null;
+    }
+
+    public function getPaidAtAttribute()
+    {
+        return $this->procurementOrder->paid_at ?? null;
+    }
+
+    public function procurement()
+    {
+        return $this->hasOne(Procurement::class);
+    }
 
     /**
      * 待支付

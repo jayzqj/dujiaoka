@@ -7,6 +7,7 @@
                 <div class="row justify-content-center">
 
                     @foreach($orders as $order)
+    @include('shared.procurement-status', ['order' => $order])
                     <div class="col-md-8">
                         <div class="card mt-3">
                             <div class="row no-gutters">
@@ -54,16 +55,16 @@
                                                     <span class="badge bg-info">{{ __('order.fields.status_pending') }}</span>
                                                     @break
                                                     @case(\App\Models\Order::STATUS_PROCESSING)
-                                                    <span class="badge bg-primary">{{ __('order.fields.status_processing') }}</span>
+                                                    <span class="badge bg-primary">{{ !empty($order['procurement_enabled']) ? '正在出卡' : __('order.fields.status_processing') }}</span>
                                                     @break
                                                     @case(\App\Models\Order::STATUS_COMPLETED)
-                                                    <span class="badge bg-success">{{ __('order.fields.status_completed') }}</span>
+                                                    <span class="badge bg-success">{{ !empty($order['procurement_enabled']) ? '已出卡' : __('order.fields.status_completed') }}</span>
                                                     @break
                                                     @case(\App\Models\Order::STATUS_FAILURE)
-                                                    <span class="badge bg-danger">{{ __('order.fields.status_failure') }}</span>
+                                                    <span class="badge bg-danger">{{ !empty($order['procurement_enabled']) ? '出卡异常' : __('order.fields.status_failure') }}</span>
                                                     @break
                                                     @case(\App\Models\Order::STATUS_ABNORMAL)
-                                                    <span class="badge bg-danger">{{ __('order.fields.status_abnormal') }}</span>
+                                                    <span class="badge bg-danger">{{ !empty($order['procurement_enabled']) ? '出卡异常' : __('order.fields.status_abnormal') }}</span>
                                                     @break
                                                 @endswitch
                                             </div>
@@ -76,6 +77,7 @@
 
                                     </div>
                                 </div>
+                                @if(empty($order['procurement_enabled']) || $order['status'] == \App\Models\Order::STATUS_COMPLETED)
                                 <div class="col-12 col-md-6">
                                     <div class="card-body">
                                         <h6 class="card-title">{{ __('order.fields.info') }}</h6>
@@ -85,6 +87,7 @@
                                         <button id="copy-card" class="btn btn-primary mt-2" data-clipboard-text="{{ $order['info'] }}">{{ __('dujiaoka.copy_text') }}</button>
                                     </div>
                                 </div>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -98,6 +101,7 @@
     <!-- main end -->
 @stop
 @section('js')
+@include('shared.procurement-poll')
 <script src="/assets/unicorn/js/clipboard.min.js"></script>
 <script>
     var clipboard = new ClipboardJS("#copy-card")

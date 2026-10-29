@@ -106,12 +106,15 @@ class OrderService
         $goods = $this->goodsService->detail($request->input('gid'));
         // 商品状态验证
         $this->goodsService->validatorGoodsStatus($goods);
+        if ($goods->procurement_enabled && (int) $request->input('by_amount') !== 1) {
+            throw new RuleValidationException('此商品每单限购一张');
+        }
         // 如果有限购
         if ($goods->buy_limit_num > 0 && $request->input('by_amount') > $goods->buy_limit_num) {
             throw new RuleValidationException(__('dujiaoka.prompt.purchase_limit_exceeded'));
         }
         // 库存不足
-        if ($request->input('by_amount') > $goods->in_stock) {
+        if (!$goods->allow_backorder && $request->input('by_amount') > $goods->in_stock) {
             throw new RuleValidationException(__('dujiaoka.prompt.inventory_shortage'));
         }
         return $goods;
@@ -227,7 +230,10 @@ class OrderService
      */
     public function expiredOrderSN(string $orderSN): bool
     {
-        return Order::query()->where('order_sn', $orderSN)->update(['status' => Order::STATUS_EXPIRED]);
+        return Order::query()->where('order_sn', $orderSN)->where('status', Order::STATUS_WAIT_PAY)
+            ->whereDoesntHave('procurementOrder', function ($query) {
+                $query->whereNotNull('paid_at');
+            })->update(['status' => Order::STATUS_EXPIRED]) > 0;
     }
 
     /**
@@ -258,9 +264,13 @@ class OrderService
      */
     public function withEmailAndPassword(string $email, string $searchPwd = '')
     {
+        $passwordRequired = dujiaoka_config_get('is_open_search_pwd', BaseModel::STATUS_CLOSE) == BaseModel::STATUS_OPEN;
         return Order::query()
             ->where('email', $email)
-            ->when(!empty($searchPwd), function ($query) use ($searchPwd) {
+            ->when($passwordRequired && trim($searchPwd) === '', function ($query) {
+                $query->whereRaw('1 = 0');
+            })
+            ->when($searchPwd !== '', function ($query) use ($searchPwd) {
                 $query->where('search_pwd', $searchPwd);
             })
             ->orderBy('created_at', 'DESC')

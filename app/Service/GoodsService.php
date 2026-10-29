@@ -39,6 +39,7 @@ class GoodsService
      */
     public function withGroup(): ?array
     {
+        app(ProcurementService::class)->refreshHomeStock();
         $goods = GoodsGroup::query()
             ->with(['goods' => function($query) {
                 $query->withCount(['carmis' => function($query) {
@@ -84,6 +85,9 @@ class GoodsService
      */
     public function format(Goods $goods)
     {
+        if ($goods->procurement_enabled) {
+            $goods->buy_limit_num = 1;
+        }
         // 格式化批发配置以及输入框配置
         $goods->wholesale_price_cnf = $goods->wholesale_price_cnf ?
             format_wholesale_price($goods->wholesale_price_cnf) :

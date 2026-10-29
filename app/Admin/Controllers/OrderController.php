@@ -94,7 +94,14 @@ class OrderController extends AdminController
      */
     protected function detail($id)
     {
-        return Show::make($id, new Order(['goods', 'coupon', 'pay']), function (Show $show) {
+        return Show::make($id, new Order(['goods', 'coupon', 'pay', 'procurement']), function (Show $show) {
+            $show->field('paid_at', '确认支付时间');
+            $show->field('procurement.state', '采购状态');
+            $show->field('procurement.request_no', '采购请求号');
+            $show->field('procurement.supplier_order_no', '第三方采购订单号');
+            $show->field('procurement.amount', '实际采购金额');
+            $show->field('procurement.cost_exceeded', '实际成本超限');
+            $show->field('procurement.error_code', '采购异常原因');
             $show->field('id');
             $show->field('order_sn');
             $show->field('title');
@@ -109,7 +116,7 @@ class OrderController extends AdminController
             $show->field('actual_price');
             $show->field('buy_ip');
             $show->field('info')->unescape()->as(function ($info) {
-                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . $info . "</textarea>";
+                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . e($info) . "</textarea>";
             });
             $show->field('pay.pay_name', admin_trans('order.fields.pay_id'));
             $show->field('status')->using(OrderModel::getStatusMap());

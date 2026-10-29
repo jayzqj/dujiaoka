@@ -10,6 +10,7 @@
 </div>
 <div class="orderinfo-grid">
 @foreach($orders as $order)
+    @include('shared.procurement-status', ['order' => $order])
     <div class="row">
         <div class="col-md-12">
             <h3>
@@ -67,19 +68,19 @@
                             @break
                             @case(\App\Models\Order::STATUS_PROCESSING)
                                 {{-- 已处理 --}}
-                                {{ __('hyper.orderinfo_status_processed') }}
+                                {{ !empty($order['procurement_enabled']) ? '正在出卡' : __('hyper.orderinfo_status_processed') }}
                             @break
                             @case(\App\Models\Order::STATUS_COMPLETED)
                                 {{-- 已完成 --}}
-                                {{ __('hyper.orderinfo_status_completed') }}
+                                {{ !empty($order['procurement_enabled']) ? '已出卡' : __('hyper.orderinfo_status_completed') }}
                             @break
                             @case(\App\Models\Order::STATUS_FAILURE)
                                 {{-- 已失败 --}}
-                                {{ __('hyper.orderinfo_status_failed') }}
+                                {{ !empty($order['procurement_enabled']) ? '出卡异常' : __('hyper.orderinfo_status_failed') }}
                             @break
-                            @case(\App\Models\Order::STATUS_FAILURE)
+                            @case(\App\Models\Order::STATUS_ABNORMAL)
                                 {{-- 状态异常 --}}
-                                {{ __('hyper.orderinfo_status_abnormal') }}
+                                {{ !empty($order['procurement_enabled']) ? '出卡异常' : __('hyper.orderinfo_status_abnormal') }}
                             @break
                         @endswitch
                     </span>
@@ -90,6 +91,7 @@
                     <span>{{ $order['pay']['pay_name'] ?? ''  }}</span>
                 </div>
             </div>
+            @if(empty($order['procurement_enabled']) || $order['status'] == \App\Models\Order::STATUS_COMPLETED)
             <div class="orderinfo-kami">
                 <h5 class="card-title">
                     {{ __('hyper.orderinfo_carmi') }}
@@ -99,6 +101,7 @@
                     {{ __('hyper.orderinfo_copy_carmi') }}
                 </button>
             </div>
+            @endif
         </div>
     </div>
 @endforeach
@@ -117,6 +120,7 @@
 @stop
 
 @section('js')
+@include('shared.procurement-poll')
 <script src="/assets/hyper/js/clipboard.min.js"></script>
 <script>
     var clipboard = new ClipboardJS('.kami-btn');

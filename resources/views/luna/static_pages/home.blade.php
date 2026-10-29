@@ -78,8 +78,8 @@
         </div>
     </script>
     <script id="goodsTpl" type="text/html">
-        <a href="<<# if(d.in_stock > 0){ >>/buy/<< d.id >><<#  } else { >>javascript:void(0);<<# }; >>"
-           class="goods-box" style="<<# if(d.in_stock <= 0){ >>cursor:not-allowed;<<# }; >>">
+        <a href="<<# if(d.in_stock > 0 || d.allow_backorder){ >>/buy/<< d.id >><<#  } else { >>javascript:void(0);<<# }; >>"
+           class="goods-box" style="<<# if(d.in_stock <= 0 && !d.allow_backorder){ >>cursor:not-allowed;<<# }; >>">
             <<# if(d.picture){ >>
             <div class="picture"><img src="{{ picture_ulr('',true) }}<< d.picture >>" alt=""></div>
             <<# }; >>

@@ -47,7 +47,7 @@
         <div class="hyper-wrapper">
             @foreach($data as $group)
                 @foreach($group['goods'] as $goods)
-                    @if($goods['in_stock'] > 0)
+                    @if($goods['in_stock'] > 0 || !empty($goods['allow_backorder']))
                     <a href="{{ url("/buy/{$goods['id']}") }}" class="home-card category">
                     @else
                     <a href="javascript:void(0);" onclick="sell_out_tip()" class="home-card category ribbon-box">
@@ -74,7 +74,7 @@
         <div class="tab-pane" id="group-{{ $group['id'] }}">
             <div class="hyper-wrapper">
                 @foreach($group['goods'] as $goods)
-                    @if($goods['in_stock'] > 0)
+                    @if($goods['in_stock'] > 0 || !empty($goods['allow_backorder']))
                     <a href="{{ url("/buy/{$goods['id']}") }}" class="home-card category">
                     @else
                     <a href="javascript:void(0);" onclick="sell_out_tip()" class="home-card category ribbon-box">

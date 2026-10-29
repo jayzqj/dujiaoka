@@ -12,6 +12,37 @@ class Goods extends BaseModel
     use SoftDeletes;
 
     protected $table = 'goods';
+    protected $with = ['procurementSettings'];
+    protected $hidden = ['procurementSettings'];
+    protected $appends = ['procurement_enabled', 'procurement_paused', 'allow_backorder', 'stock_unknown'];
+
+    public function procurementSettings()
+    {
+        return $this->hasOne(ProcurementGoods::class, 'goods_id');
+    }
+
+    public function getProcurementEnabledAttribute(): bool
+    {
+        return (bool) ($this->procurementSettings->procurement_enabled ?? false);
+    }
+
+    public function getProcurementPausedAttribute(): bool
+    {
+        return (bool) ($this->procurementSettings->procurement_paused ?? false);
+    }
+
+    public function getAllowBackorderAttribute(): bool
+    {
+        return (bool) $this->procurement_enabled && !$this->procurement_paused
+            && (int) $this->type === self::AUTOMATIC_DELIVERY;
+    }
+
+    public function getStockUnknownAttribute(): bool
+    {
+        $settings = $this->procurementSettings;
+        return $this->procurement_enabled && ($settings->supplier_stock === null
+            || !$settings->supplier_stock_at || strtotime($settings->supplier_stock_at) < time() - 60);
+    }
 
     protected $dispatchesEvents = [
         'deleted' => GoodsDeleted::class
@@ -72,7 +103,8 @@ class Goods extends BaseModel
             &&
             $this->attributes['type'] == self::AUTOMATIC_DELIVERY
         ) {
-           $this->attributes['in_stock'] = $this->attributes['carmis_count'];
+           $local = (int) $this->attributes['carmis_count'];
+           return $local + ($this->allow_backorder && !$this->stock_unknown ? (int) $this->procurementSettings->supplier_stock : 0);
         }
         return $this->attributes['in_stock'];
     }

@@ -21,6 +21,7 @@ use App\Models\BaseModel;
 use App\Models\Coupon;
 use App\Models\Goods;
 use App\Models\Order;
+use App\Models\ProcurementOrder;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -321,6 +322,18 @@ class OrderProcessService
             $order->title = $this->goods->gd_name . ' x ' . $this->buyAmount;
             // 订单类型
             $order->type = $this->goods->type;
+            $snapshot = ['procurement_enabled' => $this->goods->procurement_enabled
+                && (int) $this->goods->type === Order::AUTOMATIC_DELIVERY];
+            if ($snapshot['procurement_enabled']) {
+                $settings = $this->goods->procurementSettings;
+                $snapshot['procurement_config'] = [
+                    'code' => $settings->supplier_code,
+                    'race' => $settings->supplier_race ?? '',
+                    'sku' => json_decode($settings->supplier_sku ?: '{}', true) ?: [],
+                    'max_cost' => $settings->procurement_max_cost,
+                    'app_id' => (string) dujiaoka_config_get('ifaka_app_id', ''),
+                ];
+            }
             // 查询密码
             $order->search_pwd = $this->searchPwd;
             // 邮箱
@@ -351,7 +364,10 @@ class OrderProcessService
                 $this->calculateTheWholesalePrice()
             );
             // 保存订单
-            $order->save();
+            DB::transaction(function () use ($order, $snapshot) {
+                $order->save();
+                $order->setRelation('procurementOrder', $order->procurementOrder()->create($snapshot));
+            });
             // 如果有用到优惠券
             if ($this->coupon) {
                 // 设置优惠码已经使用
@@ -387,21 +403,27 @@ class OrderProcessService
         DB::beginTransaction();
         try {
             // 得到订单详情
-            $order = $this->orderService->detailOrderSN($orderSN);
+            $order = Order::where('order_sn', $orderSN)->lockForUpdate()->first();
             if (!$order) {
                 throw new \Exception(__('dujiaoka.prompt.order_does_not_exist'));
             }
             // 订单已经处理
-            if ($order->status == Order::STATUS_COMPLETED) {
-                throw new \Exception(__('dujiaoka.prompt.order_status_completed'));
-            }
             $bccomp = bccomp($order->actual_price, $actualPrice, 2);
             // 金额不一致
             if ($bccomp != 0) {
                 throw new \Exception(__('dujiaoka.prompt.order_inconsistent_amounts'));
             }
+            // Historical paid orders may predate the procurement order mapping.
+            if ($order->paid_at || $order->status > Order::STATUS_WAIT_PAY) {
+                DB::commit();
+                return $order;
+            }
             $order->actual_price = $actualPrice;
             $order->trade_no = $tradeNo;
+            $payment = $order->procurementOrder ?: new ProcurementOrder(['order_id' => $order->id]);
+            $payment->paid_at = now()->toDateTimeString();
+            $payment->save();
+            $order->setRelation('procurementOrder', $payment);
             // 区分订单类型
             // 自动发货
             if ($order->type == Order::AUTOMATIC_DELIVERY) {
@@ -412,6 +434,16 @@ class OrderProcessService
             // 销量加上
             $this->goodsService->salesVolumeIncr($order->goods_id, $order->buy_amount);
             DB::commit();
+            if ($order->procurement_enabled && (int) $order->status === Order::STATUS_ABNORMAL) {
+                \App\Jobs\ProcurementFailedPush::notify($order, 'local_stock_insufficient');
+            }
+            if ($order->procurement_enabled && $order->status === Order::STATUS_PROCESSING) {
+                return $completedOrder;
+            }
+            if ($order->type == Order::AUTOMATIC_DELIVERY && $order->status == Order::STATUS_COMPLETED) {
+                $this->notifyCompletedOrder($order);
+                return $completedOrder;
+            }
             // 如果开启了server酱
             if (dujiaoka_config_get('is_open_server_jiang', 0) == BaseModel::STATUS_OPEN) {
                 ServerJiang::dispatch($order);
@@ -432,7 +464,13 @@ class OrderProcessService
             ApiHook::dispatch($order);
             return $completedOrder;
         } catch (\Exception $exception) {
-            DB::rollBack();
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            } else {
+                // Notification failures must not undo or reject an already committed payment.
+                \Illuminate\Support\Facades\Log::warning('order_notification_failed', ['order_id' => $order->id ?? null]);
+                return $completedOrder;
+            }
             throw new RuleValidationException($exception->getMessage());
         }
     }
@@ -492,7 +530,15 @@ class OrderProcessService
         $carmis = $this->carmisService->withGoodsByAmountAndStatusUnsold($order->goods_id, $order->buy_amount);
         // 实际可使用的库存已经少于购买数量了
         if (count($carmis) != $order->buy_amount) {
+            if ($order->procurement_enabled && (int) $order->buy_amount === 1
+                && bccomp($order->actual_price, '0', 2) >= 0) {
+                app(ProcurementService::class)->enqueue($order);
+                return $order;
+            }
             $order->info = __('dujiaoka.prompt.order_carmis_insufficient_quantity_available');
+            if ($order->procurement_enabled) {
+                $order->info = '出卡异常';
+            }
             $order->status = Order::STATUS_ABNORMAL;
             $order->save();
             return $order;
@@ -504,13 +550,32 @@ class OrderProcessService
         $order->save();
         // 将卡密设置为已售出
         $this->carmisService->soldByIDS($ids);
+        return $order;
+    }
+
+    public function notifyCompletedOrder(Order $order): void
+    {
+        try {
+            $this->sendCardMail($order);
+            if (dujiaoka_config_get('is_open_server_jiang', 0) == BaseModel::STATUS_OPEN) { ServerJiang::dispatch($order); }
+            if (dujiaoka_config_get('is_open_telegram_push', 0) == BaseModel::STATUS_OPEN) { TelegramPush::dispatch($order); }
+            if (dujiaoka_config_get('is_open_bark_push', 0) == BaseModel::STATUS_OPEN) { BarkPush::dispatch($order); }
+            if (dujiaoka_config_get('is_open_qywxbot_push', 0) == BaseModel::STATUS_OPEN) { WorkWeiXinPush::dispatch($order); }
+            ApiHook::dispatch($order);
+        } catch (\Throwable $exception) {
+            \Illuminate\Support\Facades\Log::warning('order_notification_failed', ['order_id' => $order->id]);
+        }
+    }
+
+    private function sendCardMail(Order $order): void
+    {
         // 邮件数据
         $mailData = [
             'created_at' => $order->create_at,
             'product_name' => $order->goods->gd_name,
             'webname' => dujiaoka_config_get('text_logo', '独角数卡'),
             'weburl' => config('app.url') ?? 'http://dujiaoka.com',
-            'ord_info' => implode('<br/>', $carmisInfo),
+            'ord_info' => nl2br(e($order->info)),
             'ord_title' => $order->title,
             'order_id' => $order->order_sn,
             'buy_amount' => $order->buy_amount,
@@ -520,7 +585,6 @@ class OrderProcessService
         $mailBody = replace_mail_tpl($tpl, $mailData);
         // 邮件发送
         MailSend::dispatch($order->email, $mailBody['tpl_name'], $mailBody['tpl_content']);
-        return $order;
     }
 
 }

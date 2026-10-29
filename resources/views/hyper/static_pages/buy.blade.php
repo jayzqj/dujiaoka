@@ -66,7 +66,7 @@
                     {{-- 购买数量 --}}
                     <div class="buy-title">{{ __('hyper.buy_purchase_quantity') }}</div>
                     <div class="input-group">
-                        <input data-toggle="touchspin" type="text" name="by_amount" value="1" data-bts-max="999">
+                        <input data-toggle="touchspin" type="text" name="by_amount" value="1" data-bts-max="{{ !empty($procurement_enabled) ? 1 : 999 }}">
                     </div>
                 </div>
                 @if(dujiaoka_config_get('is_open_search_pwd') == \App\Models\Goods::STATUS_OPEN)
@@ -183,7 +183,7 @@
             $.NotificationApp.send("{{ __('hyper.buy_warning') }}","{{ __('hyper.buy_zero_quantity') }}","top-center","rgba(0,0,0,0.2)","info");
             return false;
         }
-        if($("input[name='by_amount']").val() > {{ $in_stock }}){
+        if(!{{ !empty($allow_backorder) ? 'true' : 'false' }} && $("input[name='by_amount']").val() > {{ $in_stock }}){
             {{-- 数量不允许大于库存 --}}
             $.NotificationApp.send("{{ __('hyper.buy_warning') }}","{{ __('hyper.buy_exceeds_stock') }}","top-center","rgba(0,0,0,0.2)","info");
             return false;
