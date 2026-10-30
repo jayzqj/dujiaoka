@@ -34,10 +34,15 @@ class ProcurementFailedPush implements ShouldQueue
         return is_string($url) && preg_match('#\Ahttps://qyapi\.weixin\.qq\.com/cgi-bin/webhook/send\?key=[A-Za-z0-9_-]{1,200}\z#', $url) === 1;
     }
 
-    // Call only after committing the first transition to an exceptional state.
-    public static function notify(Order $order, string $reason, ?Procurement $purchase = null): void
+    public static function webhookEnabled(): bool
     {
-        if (!$order->paid_at || !self::validWebhook(dujiaoka_config_get('procurement_failure_wecom_url', ''))) {
+        return self::validWebhook(dujiaoka_config_get('procurement_failure_wecom_url', ''));
+    }
+
+    // Call only after committing the first transition to an exceptional state.
+    public static function notify(Order $order, string $reason, ?Procurement $purchase = null, ?string $balance = null): void
+    {
+        if (!$order->paid_at || !self::webhookEnabled()) {
             return;
         }
         $reasons = [
@@ -69,6 +74,8 @@ class ProcurementFailedPush implements ShouldQueue
         $lines = [
             $purchase ? '【ifaka 采购/出卡异常】' : '【订单出卡异常】',
             '订单号：' . $order->order_sn,
+            '商品单价（下单时）：' . number_format((float) $order->goods_price, 2, '.', '') . ' 元',
+            '卡密：' . preg_replace('/[\r\n\x00-\x1F]+/u', ' ', trim((string) $order->info)),
             '商品：' . mb_substr($title, 0, 120),
             '实付金额：' . $order->actual_price . ' 元',
             '失败原因：' . $description,
@@ -76,7 +83,8 @@ class ProcurementFailedPush implements ShouldQueue
             '订单创建时间：' . $order->created_at,
             '付款确认时间：' . $order->paid_at,
             '异常时间：' . ($purchase ? $purchase->updated_at : $order->updated_at),
-            '时区：' . config('app.timezone', 'Asia/Shanghai'),
+            '失败后ifaka账户余额：' . ($balance !== null ? $balance : '暂时无法查询'),
+            '余额查询时间：' . now(),
         ];
         if ($purchase) {
             $lines[] = '采购状态：' . $purchase->state;
@@ -91,6 +99,32 @@ class ProcurementFailedPush implements ShouldQueue
         } catch (Throwable $exception) {
             // Notification failures must never change payment or procurement state, or leak the hook URL.
             Log::warning('procurement_failure_notification_enqueue_failed', ['order_id' => $order->id]);
+        }
+    }
+
+    public static function notifyPurchaseSucceeded(Order $order, Procurement $purchase, ?string $balance): void
+    {
+        if (!$order->paid_at || !self::webhookEnabled()) { return; }
+        $title = preg_replace('/[\\r\\n\\x00-\\x1F]+/u', ' ', (string) $order->title);
+        $message = implode("\n", [
+            '【ifaka采购成功／订单已出卡】',
+            '订单号：' . $order->order_sn,
+            '商品单价（下单时）：' . number_format((float) $order->goods_price, 2, '.', '') . ' 元',
+            '卡密：' . preg_replace('/[\r\n\x00-\x1F]+/u', ' ', trim((string) $order->info)),
+            '商品：' . mb_substr($title, 0, 120),
+            '实付金额：' . $order->actual_price,
+            'ifaka采购金额：' . number_format((float) $purchase->amount, 2, '.', ''),
+            'ifaka采购订单号：' . ($purchase->supplier_order_no ?: '未知'),
+            '采购后ifaka账户余额：' . ($balance !== null ? $balance : '暂时无法查询'),
+            '余额查询时间：' . now(),
+            '订单创建时间：' . $order->created_at,
+            '付款确认时间：' . $order->paid_at,
+            '出卡完成时间：' . ($purchase->updated_at ?: $order->updated_at),
+        ]);
+        try {
+            app(Dispatcher::class)->dispatch(new self(mb_strcut($message, 0, 2000, 'UTF-8')));
+        } catch (Throwable $exception) {
+            Log::warning('procurement_success_notification_enqueue_failed', ['order_id' => $order->id]);
         }
     }
 

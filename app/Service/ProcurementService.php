@@ -189,9 +189,12 @@ class ProcurementService
             return $order;
         });
         if ($manualReview) {
-            ProcurementFailedPush::notify($manualReview[0], 'order_not_processing', $manualReview[1]);
+            $this->notifyFailure($manualReview[0], 'order_not_processing', $manualReview[1]);
         }
         if ($deliveredOrder) {
+            $purchase = $purchase->fresh();
+            $balance = ProcurementFailedPush::webhookEnabled() ? $this->queryIfakaBalance() : null;
+            ProcurementFailedPush::notifyPurchaseSucceeded($deliveredOrder, $purchase, $balance);
             app('Service\OrderProcessService')->notifyCompletedOrder($deliveredOrder);
         }
     }
@@ -222,7 +225,7 @@ class ProcurementService
             return $order ? [$order, $current] : null;
         });
         if ($failure) {
-            ProcurementFailedPush::notify($failure[0], $reason, $failure[1]);
+            $this->notifyFailure($failure[0], $reason, $failure[1]);
         }
     }
 
@@ -237,6 +240,22 @@ class ProcurementService
         foreach (Procurement::whereIn('state', ['checking', 'submitting'])
             ->where('updated_at', '<', now()->subMinutes(5))->limit(100)->get() as $purchase) {
             $this->fail($purchase->id, $purchase->state === 'submitting' ? 'unknown' : 'failed', 'worker_interrupted', $purchase->state);
+        }
+    }
+
+    public function notifyFailure(Order $order, string $reason, ?Procurement $purchase = null): void
+    {
+        $balance = ProcurementFailedPush::webhookEnabled() ? $this->queryIfakaBalance() : null;
+        ProcurementFailedPush::notify($order, $reason, $purchase, $balance);
+    }
+
+    private function queryIfakaBalance(): ?string
+    {
+        try {
+            $data = $this->client->request('authentication/connect', []);
+            return IfakaClient::money($data['balance'] ?? null) ? (string) $data['balance'] : null;
+        } catch (Throwable $exception) {
+            return null;
         }
     }
 

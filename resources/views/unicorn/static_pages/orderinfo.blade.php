@@ -55,16 +55,16 @@
                                                     <span class="badge bg-info">{{ __('order.fields.status_pending') }}</span>
                                                     @break
                                                     @case(\App\Models\Order::STATUS_PROCESSING)
-                                                    <span class="badge bg-primary">{{ !empty($order['procurement_enabled']) ? '正在出卡' : __('order.fields.status_processing') }}</span>
+                                                    <span class="badge bg-primary">@if(!empty($order['procurement_enabled']))采购中@else{{ __('order.fields.status_processing') }}@endif</span>
                                                     @break
                                                     @case(\App\Models\Order::STATUS_COMPLETED)
-                                                    <span class="badge bg-success">{{ !empty($order['procurement_enabled']) ? '已出卡' : __('order.fields.status_completed') }}</span>
+                                                    <span class="badge bg-success">{{ __('order.fields.status_completed') }}</span>
                                                     @break
                                                     @case(\App\Models\Order::STATUS_FAILURE)
-                                                    <span class="badge bg-danger">{{ !empty($order['procurement_enabled']) ? '出卡异常' : __('order.fields.status_failure') }}</span>
+                                                    <span class="badge bg-danger">{{ __('order.fields.status_failure') }}</span>
                                                     @break
                                                     @case(\App\Models\Order::STATUS_ABNORMAL)
-                                                    <span class="badge bg-danger">{{ !empty($order['procurement_enabled']) ? '出卡异常' : __('order.fields.status_abnormal') }}</span>
+                                                    <span class="badge bg-danger">{{ __('order.fields.status_abnormal') }}</span>
                                                     @break
                                                 @endswitch
                                             </div>
@@ -77,7 +77,11 @@
 
                                     </div>
                                 </div>
-                                @if(empty($order['procurement_enabled']) || $order['status'] == \App\Models\Order::STATUS_COMPLETED)
+                                @if(!empty($order['procurement_enabled']) && $order['status'] == \App\Models\Order::STATUS_PROCESSING)
+                                <div class="col-12 col-md-6">@include('shared.delivery-wait')</div>
+                                @elseif(!empty($order['procurement_enabled']) && in_array((int) $order['status'], [\App\Models\Order::STATUS_FAILURE, \App\Models\Order::STATUS_ABNORMAL], true))
+<div class="col-12 col-md-6">@include('shared.delivery-failure')</div>
+@elseif(empty($order['procurement_enabled']) || $order['status'] == \App\Models\Order::STATUS_COMPLETED)
                                 <div class="col-12 col-md-6">
                                     <div class="card-body">
                                         <h6 class="card-title">{{ __('order.fields.info') }}</h6>

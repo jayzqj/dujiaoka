@@ -113,7 +113,7 @@ class ProcurementTest extends TestCase
         return (new OrderProcessService())->completedOrder($order->order_sn, (float) $order->actual_price, 'payment-123');
     }
 
-    private function service(array $trade = [], bool $timeout = false, string $quote = '6.00'): ProcurementService
+    private function service(array $trade = [], bool $timeout = false, string $quote = '6.00', ?string $balance = '42.00'): ProcurementService
     {
         $client = \Mockery::mock(IfakaClient::class);
         $client->shouldReceive('request')->with('item', ['code' => 'product'])->once()
@@ -137,6 +137,10 @@ class ProcurementTest extends TestCase
             }
         } else {
             $client->shouldNotReceive('request')->with('trade', \Mockery::any());
+        }
+        if (ProcurementFailedPush::webhookEnabled()) {
+            $client->shouldReceive('request')->with('authentication/connect', [])->once()
+                ->andReturn(['balance' => $balance]);
         }
         return new ProcurementService($client);
     }
@@ -322,7 +326,12 @@ class ProcurementTest extends TestCase
         $this->assertStringNotContainsString('<script>bad()', $html);
         foreach (['luna', 'hyper', 'unicorn'] as $theme) {
             $rendered = view($theme . '.static_pages.orderinfo', ['orders' => [$order], 'page_title' => 'Test'])->render();
-            $this->assertSame(1, substr_count($rendered, '出卡异常'));
+            $this->assertSame(1, substr_count($rendered, '出卡失败，请联系客服'));
+            $this->assertStringContainsString('class="delivery-failure-card"', $rendered);
+            $this->assertStringContainsString('客服微信：', $rendered);
+            $this->assertStringContainsString('&lt;script&gt;bad()&lt;/script&gt;', $rendered);
+            $this->assertStringNotContainsString('<script>bad()', $rendered);
+            $this->assertStringContainsString($theme === 'hyper' ? __('hyper.orderinfo_order_status') : __('order.fields.status'), $rendered);
             $this->assertStringNotContainsString('ifaka', $rendered);
             $this->assertStringNotContainsString('采购', $rendered);
             $this->assertStringNotContainsString('内部原因', $rendered);
@@ -796,6 +805,9 @@ class ProcurementTest extends TestCase
             $this->assertStringContainsString('付款确认时间：', $job->message);
             $this->assertStringContainsString('采购请求号：TEST', $job->message);
             $this->assertStringContainsString('可能已经扣款', $job->message);
+            $this->assertStringContainsString('商品单价（下单时）：10.00 元', $job->message);
+            $this->assertStringContainsString('失败后ifaka账户余额：42.00', $job->message);
+            $this->assertStringNotContainsString('时区：', $job->message);
             $this->assertStringNotContainsString($order->email, $job->message);
             $this->assertStringNotContainsString('test-bot-key', serialize($job));
             return true;
@@ -831,7 +843,15 @@ class ProcurementTest extends TestCase
         $order = $this->order(['status' => Order::STATUS_PROCESSING, 'paid_at' => now(), 'info' => '内部采购处理中']);
         foreach (['luna', 'hyper', 'unicorn'] as $theme) {
             $html = view($theme . '.static_pages.orderinfo', ['orders' => [$order], 'page_title' => 'Test'])->render();
-            $this->assertSame(1, substr_count($html, '正在出卡'));
+            $visible = strip_tags(preg_replace('#<(script|style)\b[^>]*>.*?</\1>#is', '', $html));
+            $this->assertSame(1, substr_count($visible, '正在出卡'));
+            $this->assertStringContainsString('采购中', $visible);
+            $this->assertStringContainsString($theme === 'hyper' ? __('hyper.orderinfo_order_status') : __('order.fields.status'), $visible);
+            $this->assertStringContainsString('class="delivery-wait-card"', $html);
+            $this->assertSame(1, substr_count($html, 'class="delivery-countdown-value">10</span>'));
+            $this->assertStringContainsString('delivery-countdown-progress', $html);
+            $this->assertStringContainsString('正在出卡，请稍后', $html);
+            $this->assertStringContainsString('clearInterval(countdownTimer)', $html);
             $this->assertStringContainsString('class="delivery-pending"', $html);
             $this->assertStringNotContainsString('内部采购处理中', $html);
             $this->assertStringNotContainsString('<textarea', $html);
@@ -845,7 +865,76 @@ class ProcurementTest extends TestCase
         ProcurementFailedPush::notify($order, 'internal_error');
         $this->pay($order);
         $this->service()->process(Procurement::first()->id);
-        Queue::assertNotPushed(ProcurementFailedPush::class);
+        Queue::assertPushed(ProcurementFailedPush::class, function ($job) {
+            return strpos($job->message, '【ifaka采购成功／订单已出卡】') !== false;
+        });
+        Queue::assertNotPushed(ProcurementFailedPush::class, function ($job) {
+            return strpos($job->message, '【ifaka采购/出卡异常】') !== false
+                || strpos($job->message, '【订单出卡异常】') !== false;
+        });
+    }
+
+    public function test_successful_purchase_notification_includes_post_purchase_balance()
+    {
+        $this->enableFailurePush();
+        $order = $this->order(); $this->pay($order);
+        $this->service()->process(Procurement::first()->id);
+        Queue::assertPushed(ProcurementFailedPush::class, 1);
+        Queue::assertPushed(ProcurementFailedPush::class, function ($job) use ($order) {
+            $this->assertStringContainsString('【ifaka采购成功／订单已出卡】', $job->message);
+            $this->assertStringContainsString($order->order_sn, $job->message);
+            $this->assertStringContainsString('ifaka采购金额：6.00', $job->message);
+            $this->assertStringContainsString('ifaka采购订单号：supplier-123', $job->message);
+            $this->assertStringContainsString('商品单价（下单时）：10.00 元', $job->message);
+            $this->assertStringContainsString('卡密：CARD[123]', $job->message);
+            $this->assertStringContainsString('采购后ifaka账户余额：42.00', $job->message);
+            $this->assertStringContainsString('余额查询时间：', $job->message);
+            $this->assertStringNotContainsString('时区：', $job->message);
+            return true;
+        });
+    }
+
+    public function test_failure_notification_says_when_balance_query_failed()
+    {
+        $this->enableFailurePush();
+        $order = $this->order(); $this->pay($order);
+        $this->service([], true, '6.00', null)->process(Procurement::first()->id);
+        Queue::assertPushed(ProcurementFailedPush::class, function ($job) {
+            return strpos($job->message, '失败后ifaka账户余额：暂时无法查询') !== false;
+        });
+    }
+
+    public function test_supplier_balance_endpoint_returns_the_post_purchase_account_balance()
+    {
+        Cache::put('system-setting', array_merge(Cache::get('system-setting'), [
+            'ifaka_app_key_encrypted' => encrypt('private-app-key'),
+        ]));
+        $client = new class extends IfakaClient {
+            protected function transport(string $endpoint, string $body): string
+            {
+                $this->assertEndpoint($endpoint);
+                parse_str($body, $parameters);
+                if (array_keys($parameters) !== ['app_id', 'sign'] || !$parameters['app_id'] || !$parameters['sign']) {
+                    throw new \RuntimeException('Balance request must only contain signed account credentials');
+                }
+                return '{"code":200,"msg":"success","data":{"shopName":"test","balance":"123.45"}}';
+            }
+
+            private function assertEndpoint(string $endpoint): void
+            {
+                if ($endpoint !== 'authentication/connect') { throw new \RuntimeException('Unexpected endpoint'); }
+            }
+        };
+        $this->assertEquals('123.45', $client->request('authentication/connect', [])['balance']);
+    }
+
+    public function test_account_balance_endpoint_uses_its_distinct_documented_path()
+    {
+        $client = new class extends IfakaClient {
+            public function urlForTest(string $endpoint): string { return $this->endpointUrl($endpoint); }
+        };
+        $this->assertSame('https://ifaka.app/shared/authentication/connect', $client->urlForTest('authentication/connect'));
+        $this->assertSame('https://ifaka.app/shared/commodity/item', $client->urlForTest('item'));
     }
 
     public function test_notification_enqueue_failure_preserves_the_terminal_procurement_state()
@@ -983,6 +1072,19 @@ class ProcurementTest extends TestCase
             $this->assertStringNotContainsString('库存不足时将尝试采购', $html);
             $this->assertStringNotContainsString('第三方库存暂未确认', $html);
             $this->assertStringContainsString('create-order', $html);
+        }
+    }
+
+    public function test_completed_delivery_shows_the_card_instead_of_the_countdown()
+    {
+        $order = $this->order(['status' => Order::STATUS_COMPLETED, 'paid_at' => now(), 'info' => 'CARD-OK']);
+        foreach (['luna', 'hyper', 'unicorn'] as $theme) {
+            $html = view($theme . '.static_pages.orderinfo', ['orders' => [$order], 'page_title' => 'Test'])->render();
+            $this->assertStringContainsString('CARD-OK', $html);
+            $this->assertStringNotContainsString('class="delivery-wait-card"', $html);
+            $this->assertStringContainsString($theme === 'hyper' ? __('hyper.orderinfo_order_status') : __('order.fields.status'), $html);
+            $this->assertStringContainsString('data-clipboard-text="CARD-OK"', $html);
+            $this->assertStringNotContainsString('class="delivery-pending"', $html);
         }
     }
 

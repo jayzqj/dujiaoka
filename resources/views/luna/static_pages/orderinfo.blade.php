@@ -101,22 +101,22 @@
                                                 @break
                                                 @case(\App\Models\Order::STATUS_PROCESSING)
                                                 <span class="small-tips tips-green">
-                                                    {{ !empty($order['procurement_enabled']) ? '正在出卡' : __('order.fields.status_processing') }}
+                                                    @if(!empty($order['procurement_enabled']))采购中@else{{ __('order.fields.status_processing') }}@endif
                                                 </span>
                                                 @break
                                                 @case(\App\Models\Order::STATUS_COMPLETED)
                                                 <span class="small-tips tips-green">
-                                                    {{ !empty($order['procurement_enabled']) ? '已出卡' : __('order.fields.status_completed') }}
+                                                    {{ __('order.fields.status_completed') }}
                                                 </span>
                                                 @break
                                                 @case(\App\Models\Order::STATUS_FAILURE)
                                                 <span class="small-tips tips-black">
-                                                    {{ !empty($order['procurement_enabled']) ? '出卡异常' : __('order.fields.status_failure') }}
+                                                    {{ __('order.fields.status_failure') }}
                                                 </span>
                                                 @break
                                                 @case(\App\Models\Order::STATUS_ABNORMAL)
                                                 <span class="small-tips tips-black">
-                                                    {{ !empty($order['procurement_enabled']) ? '出卡异常' : __('order.fields.status_abnormal') }}
+                                                    {{ __('order.fields.status_abnormal') }}
                                                 </span>
                                                 @break
                                             @endswitch
@@ -125,7 +125,11 @@
                                                 :</strong> {{ $order['pay']['pay_name'] ?? ''  }}</li>
                                     </ul>
                                 </div>
-                                @if(empty($order['procurement_enabled']) || $order['status'] == \App\Models\Order::STATUS_COMPLETED)
+                                @if(!empty($order['procurement_enabled']) && $order['status'] == \App\Models\Order::STATUS_PROCESSING)
+                                <div class="layui-col-md4">@include('shared.delivery-wait')</div>
+                                @elseif(!empty($order['procurement_enabled']) && in_array((int) $order['status'], [\App\Models\Order::STATUS_FAILURE, \App\Models\Order::STATUS_ABNORMAL], true))
+<div class="layui-col-md4">@include('shared.delivery-failure')</div>
+@elseif(empty($order['procurement_enabled']) || $order['status'] == \App\Models\Order::STATUS_COMPLETED)
                                 @php $info =''; @endphp
                                 @if($order['info'])
                                     @php

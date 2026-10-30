@@ -435,7 +435,7 @@ class OrderProcessService
             $this->goodsService->salesVolumeIncr($order->goods_id, $order->buy_amount);
             DB::commit();
             if ($order->procurement_enabled && (int) $order->status === Order::STATUS_ABNORMAL) {
-                \App\Jobs\ProcurementFailedPush::notify($order, 'local_stock_insufficient');
+                app(ProcurementService::class)->notifyFailure($order, 'local_stock_insufficient');
             }
             if ($order->procurement_enabled && $order->status === Order::STATUS_PROCESSING) {
                 return $completedOrder;

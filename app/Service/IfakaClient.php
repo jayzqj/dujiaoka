@@ -47,16 +47,16 @@ class IfakaClient
 
     protected function transport(string $endpoint, string $body): string
     {
-        if (!in_array($endpoint, ['items', 'item', 'stock', 'valuation', 'trade', 'query'], true)) {
+        if (!in_array($endpoint, ['items', 'item', 'stock', 'valuation', 'trade', 'query', 'authentication/connect'], true)) {
             throw new RuntimeException('unsupported_supplier_endpoint');
         }
-        $curl = curl_init('https://ifaka.app/shared/commodity/' . $endpoint);
+        $curl = curl_init($this->endpointUrl($endpoint));
         curl_setopt_array($curl, [
             CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body,
             CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded; charset=UTF-8'],
             CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_CONNECTTIMEOUT => in_array($endpoint, ['items', 'item', 'stock'], true) ? 2 : 5,
-            CURLOPT_TIMEOUT => in_array($endpoint, ['items', 'item', 'stock'], true) ? 4 : 20,
+            CURLOPT_CONNECTTIMEOUT => in_array($endpoint, ['items', 'item', 'stock', 'authentication/connect'], true) ? 2 : 5,
+            CURLOPT_TIMEOUT => in_array($endpoint, ['items', 'item', 'stock', 'authentication/connect'], true) ? 4 : 20,
             CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2,
         ]);
         $response = curl_exec($curl);
@@ -66,6 +66,13 @@ class IfakaClient
             throw new RuntimeException('supplier_transport_error');
         }
         return $response;
+    }
+
+    protected function endpointUrl(string $endpoint): string
+    {
+        return $endpoint === 'authentication/connect'
+            ? 'https://ifaka.app/shared/authentication/connect'
+            : 'https://ifaka.app/shared/commodity/' . $endpoint;
     }
 
     public static function money($value): bool

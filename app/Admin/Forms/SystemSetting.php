@@ -53,8 +53,8 @@ class SystemSetting extends Form
             $this->password('ifaka_app_key', 'ifaka App Key')->help('留空保留原密钥；保存时加密');
             $this->text('ifaka_request_prefix', '请求号专属前缀')->help('向平台确认独占前缀，2–4 位字母数字；启用后不要更换或复用其他站点前缀');
             $this->text('customer_service_wechat', '客服微信')->help('在出卡失败提示旁展示，客户主动联系');
-            $this->url('procurement_failure_wecom_url', '采购失败企业微信 Hook URL')
-                ->help('填写企业微信群机器人的完整 Webhook 地址；支付确认后采购或出卡异常时通知。留空不发送，与普通订单推送独立。');
+            $this->url('procurement_failure_wecom_url', '采购与出卡企业微信通知 Hook URL')
+                ->help('填写企业微信群机器人的完整 Webhook 地址；采购成功或支付后的采购/出卡异常时通知，并附 ifaka 账户余额。留空不发送，与普通订单推送独立。');
         });
         $this->tab(admin_trans('system-setting.labels.base_setting'), function () {
             $this->text('title', admin_trans('system-setting.fields.title'))->required();

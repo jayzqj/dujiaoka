@@ -68,19 +68,19 @@
                             @break
                             @case(\App\Models\Order::STATUS_PROCESSING)
                                 {{-- 已处理 --}}
-                                {{ !empty($order['procurement_enabled']) ? '正在出卡' : __('hyper.orderinfo_status_processed') }}
+                                @if(!empty($order['procurement_enabled']))采购中@else{{ __('hyper.orderinfo_status_processed') }}@endif
                             @break
                             @case(\App\Models\Order::STATUS_COMPLETED)
                                 {{-- 已完成 --}}
-                                {{ !empty($order['procurement_enabled']) ? '已出卡' : __('hyper.orderinfo_status_completed') }}
+                                {{ __('hyper.orderinfo_status_completed') }}
                             @break
                             @case(\App\Models\Order::STATUS_FAILURE)
                                 {{-- 已失败 --}}
-                                {{ !empty($order['procurement_enabled']) ? '出卡异常' : __('hyper.orderinfo_status_failed') }}
+                                {{ __('hyper.orderinfo_status_failed') }}
                             @break
                             @case(\App\Models\Order::STATUS_ABNORMAL)
                                 {{-- 状态异常 --}}
-                                {{ !empty($order['procurement_enabled']) ? '出卡异常' : __('hyper.orderinfo_status_abnormal') }}
+                                {{ __('hyper.orderinfo_status_abnormal') }}
                             @break
                         @endswitch
                     </span>
@@ -91,7 +91,11 @@
                     <span>{{ $order['pay']['pay_name'] ?? ''  }}</span>
                 </div>
             </div>
-            @if(empty($order['procurement_enabled']) || $order['status'] == \App\Models\Order::STATUS_COMPLETED)
+            @if(!empty($order['procurement_enabled']) && $order['status'] == \App\Models\Order::STATUS_PROCESSING)
+            <div class="orderinfo-kami">@include('shared.delivery-wait')</div>
+            @elseif(!empty($order['procurement_enabled']) && in_array((int) $order['status'], [\App\Models\Order::STATUS_FAILURE, \App\Models\Order::STATUS_ABNORMAL], true))
+<div class="orderinfo-kami">@include('shared.delivery-failure')</div>
+@elseif(empty($order['procurement_enabled']) || $order['status'] == \App\Models\Order::STATUS_COMPLETED)
             <div class="orderinfo-kami">
                 <h5 class="card-title">
                     {{ __('hyper.orderinfo_carmi') }}
